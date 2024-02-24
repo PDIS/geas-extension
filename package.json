@@ -1,0 +1,8 @@
+{
+  "devDependencies": {
+    "esbuild": "0.20.1"
+  },
+  "scripts": {
+    "build": "esbuild main.js --bundle --outfile=dist/moda-geas.js"
+  }
+}
