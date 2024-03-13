@@ -23,6 +23,14 @@ function init() {
       .getElementById("new-register")
       .addEventListener("click", registerClicked);
   }
+
+  // sign
+  var poolTable = document.querySelector("table#myTable");
+  var signHTML = '<input type="button" id="sign-all" value="簽章">';
+  if (poolTable) {
+    poolTable.insertAdjacentHTML("afterend", signHTML);
+    document.getElementById("sign-all").addEventListener("click", signClicked);
+  }
 }
 
 function doLogin(token, pkcs1, pkcs7) {
@@ -121,6 +129,66 @@ async function registerClicked() {
     return false;
   }
   doRegister(getICToken(), pkcs1, pkcs7);
+}
+
+var dataPool = {};
+function signClicked() {
+  dataPool = {
+    idx: {},
+    case: {},
+  };
+  $("input", $("table#myTable")).each(function () {
+    var theId = "" + $(this).attr("id");
+    var idParts = theId.split("_");
+    if (idParts.length === 2) {
+      if (!dataPool.idx[idParts[1]]) {
+        dataPool.idx[idParts[1]] = {};
+      }
+      dataPool.idx[idParts[1]][idParts[0]] = $(this).val();
+    }
+  });
+  const requestOptions = {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      action: "get",
+    }).toString(),
+  };
+  fetch("/iftwf/ajax_server/get_all_batch.php", requestOptions)
+    .then((response) => response.json())
+    .then((data) => {
+      var k = "";
+      for (k in dataPool.idx) {
+        if (dataPool.idx[k]["shtno"]) {
+          dataPool.case[dataPool.idx[k]["shtno"]] = dataPool.idx[k];
+        }
+      }
+      $.each(data.batches, function (k, v) {
+        $.ajax({
+          url: "/iftwf/WF9T08J.php",
+          data: {
+            j_ProcType: "Proc",
+            j_epno: $("input#f_epno").val(), //處理人epno, ex. 000385
+            j_fileno: v, //處理的表單shtno
+            j_flow_btn_name: "NewForm",
+            f_depute: "",
+            stpname: dataPool.case[v].stepname, // ex. 申請人主管
+            prcepno: dataPool.case[v].procepno, // ex. 000047
+            procdesc: "",
+          },
+          error: function (xhr) {
+            console.log("error");
+            console.log(xhr);
+          },
+          success: function (response) {
+            var data_arr = response.split("-_-");
+            console.log(data_arr);
+          },
+        });
+      });
+    });
 }
 
 init();
