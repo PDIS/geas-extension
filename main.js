@@ -133,62 +133,84 @@ async function registerClicked() {
 
 var dataPool = {};
 function signClicked() {
-  dataPool = {
-    idx: {},
-    case: {},
-  };
-  $("input", $("table#myTable")).each(function () {
-    var theId = "" + $(this).attr("id");
-    var idParts = theId.split("_");
-    if (idParts.length === 2) {
-      if (!dataPool.idx[idParts[1]]) {
-        dataPool.idx[idParts[1]] = {};
-      }
-      dataPool.idx[idParts[1]][idParts[0]] = $(this).val();
-    }
-  });
-  const requestOptions = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      action: "get",
-    }).toString(),
-  };
-  fetch("/iftwf/ajax_server/get_all_batch.php", requestOptions)
-    .then((response) => response.json())
-    .then((data) => {
-      var k = "";
-      for (k in dataPool.idx) {
-        if (dataPool.idx[k]["shtno"]) {
-          dataPool.case[dataPool.idx[k]["shtno"]] = dataPool.idx[k];
+    let pin = prompt("請輸入PIN碼", ""); // TODO: replace with <dialog>?
+
+    dataPool = {
+        idx: {},
+        case: {},
+        pin: pin
+    };
+
+    $("input", $("table#myTable")).each(function () {
+        var theId = "" + $(this).attr("id");
+        var idParts = theId.split("_");
+        if (idParts.length === 2) {
+            if (!dataPool.idx[idParts[1]]) {
+                dataPool.idx[idParts[1]] = {};
+            }
+            dataPool.idx[idParts[1]][idParts[0]] = $(this).val();
         }
-      }
-      $.each(data.batches, function (k, v) {
-        $.ajax({
-          url: "/iftwf/WF9T08J.php",
-          data: {
-            j_ProcType: "Proc",
-            j_epno: $("input#f_epno").val(), //處理人epno, ex. 000385
-            j_fileno: v, //處理的表單shtno
-            j_flow_btn_name: "NewForm",
-            f_depute: "",
-            stpname: dataPool.case[v].stepname, // ex. 申請人主管
-            prcepno: dataPool.case[v].procepno, // ex. 000047
-            procdesc: "",
-          },
-          error: function (xhr) {
-            console.log("error");
-            console.log(xhr);
-          },
-          success: function (response) {
-            var data_arr = response.split("-_-");
-            console.log(data_arr);
-          },
-        });
-      });
     });
+    const requestOptions = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+            action: "get",
+        }).toString(),
+    };
+    fetch("/iftwf/ajax_server/get_all_batch.php", requestOptions)
+        .then((response) => response.json())
+        .then((data) => {
+            var k = "";
+            for (k in dataPool.idx) {
+                if (dataPool.idx[k]["shtno"]) {
+                    dataPool.case[dataPool.idx[k]["shtno"]] = dataPool.idx[k];
+                }
+            }
+            for (k in data.batches) {
+                const requestOptions = {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: new URLSearchParams({
+                        Op: 'get_batch_signs',
+                        Cardno: 'haha',
+                        PeriodFrom: 'haha',
+                        PeriodTo: 'haha',
+                        Inno: data.batches[k],
+                        Orgno: batchsign2.orgno
+                    }).toString(),
+                };
+                fetch("/iftwf/webservice.php", requestOptions)
+                    .then((response) => response.json())
+                    .then((job) => {
+                        const requestOptions = {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/x-www-form-urlencoded",
+                            },
+                            body: new URLSearchParams({
+                                Op: 'set_inno_signs',
+                                Cardno: 'haha',
+                                Token: job.Token,
+                                X509: '',
+                                P7: '',
+                                Inno: job.Inno,
+                                Orgno: batchsign2.orgno,
+                                Signs: JSON.stringify(job.Signs)
+                            }).toString(),
+                        };
+                        fetch("/iftwf/webservice.php", requestOptions)
+                            .then((response) => response.json())
+                            .then((result) => {
+                                console.log(result);
+                            });
+                    });
+            }
+        });
 }
 
 init();
