@@ -131,64 +131,136 @@ async function registerClicked() {
   doRegister(getICToken(), pkcs1, pkcs7);
 }
 
-var dataPool = {};
+var dataPool = {}, cardReading = false;
 function signClicked() {
-  dataPool = {
-    idx: {},
-    case: {},
-  };
-  $("input", $("table#myTable")).each(function () {
-    var theId = "" + $(this).attr("id");
-    var idParts = theId.split("_");
-    if (idParts.length === 2) {
-      if (!dataPool.idx[idParts[1]]) {
-        dataPool.idx[idParts[1]] = {};
-      }
-      dataPool.idx[idParts[1]][idParts[0]] = $(this).val();
-    }
-  });
-  const requestOptions = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams({
-      action: "get",
-    }).toString(),
-  };
-  fetch("/iftwf/ajax_server/get_all_batch.php", requestOptions)
-    .then((response) => response.json())
-    .then((data) => {
-      var k = "";
-      for (k in dataPool.idx) {
-        if (dataPool.idx[k]["shtno"]) {
-          dataPool.case[dataPool.idx[k]["shtno"]] = dataPool.idx[k];
-        }
-      }
-      $.each(data.batches, function (k, v) {
-        $.ajax({
-          url: "/iftwf/WF9T08J.php",
-          data: {
-            j_ProcType: "Proc",
-            j_epno: $("input#f_epno").val(), //處理人epno, ex. 000385
-            j_fileno: v, //處理的表單shtno
-            j_flow_btn_name: "NewForm",
-            f_depute: "",
-            stpname: dataPool.case[v].stepname, // ex. 申請人主管
-            prcepno: dataPool.case[v].procepno, // ex. 000047
-            procdesc: "",
-          },
-          error: function (xhr) {
-            console.log("error");
-            console.log(xhr);
-          },
-          success: function (response) {
-            var data_arr = response.split("-_-");
-            console.log(data_arr);
-          },
+    let pin = prompt("請輸入PIN碼", ""); // TODO: replace with <dialog>?
+
+    dataPool = {
+        idx: {},
+        case: {},
+        pin: pin,
+        x509: "",
+        p7: "",
+        inno: "",
+        jobs: []
+    };
+
+    getICToken().goodDay(() => {
+        cardReading = true;
+        getCert(1, () => {
+            let token = getICToken();
+            if (0 != token.RetObj.RCode) {
+                console.error(token.RetObj.RCode, token.RetObj.RMsg);
+                console.log(token.RetObj);
+            } else {
+                dataPool.x509 = token.RetObj.Certificate;
+                console.log('x509 get');
+                cardReading = false;
+            }
         });
-      });
     });
+
+    $("input", $("table#myTable")).each(function () {
+        var theId = "" + $(this).attr("id");
+        var idParts = theId.split("_");
+        if (idParts.length === 2) {
+            if (!dataPool.idx[idParts[1]]) {
+                dataPool.idx[idParts[1]] = {};
+            }
+            dataPool.idx[idParts[1]][idParts[0]] = $(this).val();
+        }
+    });
+    const requestOptions = {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+            action: "get",
+        }).toString(),
+    };
+    fetch("/iftwf/ajax_server/get_all_batch.php", requestOptions)
+        .then((response) => response.json())
+        .then((data) => {
+            var k = "";
+            for (k in dataPool.idx) {
+                if (dataPool.idx[k]["shtno"]) {
+                    dataPool.case[dataPool.idx[k]["shtno"]] = dataPool.idx[k];
+                }
+            }
+            dataPool.jobs = data.batches;
+            function nextSign() {
+                if (dataPool.jobs.length == 0) return;
+                if (dataPool.x509 == "" || cardReading) {
+                    setTimeout(nextSign, 300);
+                } else {
+                    dataPool.inno = dataPool.jobs.shift();
+                    console.log(dataPool.inno);
+                    getICToken().goodDay(() => {
+                        getICToken().getSmartCardID(() => {
+                            getICToken().sign(
+                                dataPool.inno,
+                                dataPool.pin,
+                                "SHA1",
+                                () => {
+                                    let token = getICToken();
+                                    cardReading = false;
+                                    if (0 != token.RetObj.RCode) {
+                                        console.error(token.RetObj.RCode, token.RetObj.RMsg);
+                                    } else {
+                                        console.log('getting server token for ' + dataPool.inno);
+                                        dataPool.p7 = token.RetObj.B64Signature;
+                                        const requestOptions = {
+                                            method: "POST",
+                                            headers: {
+                                                "Content-Type": "application/x-www-form-urlencoded",
+                                            },
+                                            body: new URLSearchParams({
+                                                Op: 'get_batch_signs',
+                                                Cardno: 'haha',
+                                                PeriodFrom: 'haha',
+                                                PeriodTo: 'haha',
+                                                Inno: dataPool.inno,
+                                                Orgno: batchsign2.orgno
+                                            }).toString(),
+                                        };
+                                        fetch("/iftwf/webservice.php", requestOptions)
+                                            .then((response) => response.json())
+                                            .then((job) => {
+                                                const requestOptions = {
+                                                    method: "POST",
+                                                    headers: {
+                                                        "Content-Type": "application/x-www-form-urlencoded",
+                                                    },
+                                                    body: new URLSearchParams({
+                                                        Op: 'set_inno_signs',
+                                                        Cardno: 'haha',
+                                                        Token: job.Token,
+                                                        X509: dataPool.x509,
+                                                        P7: dataPool.p7,
+                                                        Inno: dataPool.inno,
+                                                        Orgno: batchsign2.orgno,
+                                                        Signs: JSON.stringify(job.Signs)
+                                                    }).toString(),
+                                                };
+                                                fetch("/iftwf/webservice.php", requestOptions)
+                                                    .then((response) => response.json())
+                                                    .then((result) => {
+                                                        console.log(result);
+                                                        setTimeout(nextSign, 300);
+                                                    });
+                                            });
+
+                                    }
+                                },
+                                "PKCS7"
+                            );
+                        });
+                    });
+                }
+            }
+            setTimeout(nextSign, 300);
+        });
 }
 
 init();
