@@ -1,10 +1,13 @@
 {
   "devDependencies": {
     "esbuild": "0.20.1",
+    "eslint": "^8.57.0",
     "prettier": "^3.2.5"
   },
   "scripts": {
     "build": "esbuild main.js --bundle --outfile=dist/moda-geas.js",
+    "lint:check": "eslint digi-signature.js main.js",
+    "lint:fix": "eslint digi-signature.js main.js --fix",
     "pretty:check": "prettier --check digi-signature.js main.js",
     "pretty:fix": "prettier --write digi-signature.js main.js"
   }
